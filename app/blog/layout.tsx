@@ -1,0 +1,9 @@
+import AppShell from '@/app/components/AppShell'
+
+export default function BlogLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return <AppShell activeSection="blog">{children}</AppShell>
+}
