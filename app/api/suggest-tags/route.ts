@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const res = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+    const res = await fetch('https://ark.cn-beijing.volces.com/api/v3/responses', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -37,8 +37,12 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model: 'doubao-seed-2-0-pro-260215',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 100,
+        input: [
+          {
+            role: 'user',
+            content: [{ type: 'input_text', text: prompt }],
+          },
+        ],
       }),
       signal: AbortSignal.timeout(15000),
     })
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await res.json()
-    const text: string = data?.choices?.[0]?.message?.content ?? ''
+    const text: string = data?.output?.[0]?.content?.[0]?.text ?? ''
     const tags = text
       .split(/[,，、\n]/)
       .map((t: string) => t.trim().replace(/^[#\s]+/, ''))
