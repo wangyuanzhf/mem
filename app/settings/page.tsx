@@ -1,14 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Image from 'next/image'
 
 type Profile = {
   username: string
   bio: string | null
   gender: 'male' | 'female' | 'other' | null
   age: number | null
+  avatar_url: string | null
 }
 
 export default function SettingsPage() {
@@ -18,10 +20,14 @@ export default function SettingsPage() {
   const [bio, setBio] = useState('')
   const [gender, setGender] = useState<'male' | 'female' | 'other' | ''>('')
   const [age, setAge] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -29,9 +35,10 @@ export default function SettingsPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
       setEmail(user.email ?? '')
+      setUserId(user.id)
       const { data: profile } = await supabase
         .from('profiles')
-        .select('username, bio, gender, age')
+        .select('username, bio, gender, age, avatar_url')
         .eq('id', user.id)
         .single()
       if (profile) {
@@ -39,11 +46,43 @@ export default function SettingsPage() {
         setBio((profile as Profile).bio ?? '')
         setGender(((profile as Profile).gender ?? '') as typeof gender)
         setAge((profile as Profile).age != null ? String((profile as Profile).age) : '')
+        setAvatarUrl((profile as Profile).avatar_url ?? null)
       }
       setLoading(false)
     }
     load()
   }, [router])
+
+  const handleAvatarUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) { setError('请选择图片文件'); return }
+    if (file.size > 2 * 1024 * 1024) { setError('头像大小不能超过 2MB'); return }
+    setUploadingAvatar(true)
+    setError('')
+    try {
+      const supabase = createClient()
+      const ext = file.name.split('.').pop()
+      const path = `${userId}/avatar.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true })
+      if (upErr) throw upErr
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+      // add cache-busting param
+      const url = `${publicUrl}?t=${Date.now()}`
+      const { error: updateErr } = await supabase
+        .from('profiles')
+        .update({ avatar_url: url })
+        .eq('id', userId)
+      if (updateErr) throw updateErr
+      setAvatarUrl(url)
+      setSuccess('头像已更新')
+      router.refresh()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '上传失败')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -109,6 +148,49 @@ export default function SettingsPage() {
         <p className="text-sm text-[#57606a] mt-1">管理你的个人资料和账号信息</p>
       </div>
 
+      {/* 头像卡片 */}
+      <div className="bg-white border border-[#d0d7de] rounded-md overflow-hidden mb-5">
+        <div className="px-5 py-3 border-b border-[#d0d7de] bg-[#f6f8fa]">
+          <h2 className="text-sm font-semibold text-[#1f2328]">头像</h2>
+        </div>
+        <div className="p-5 flex items-center gap-5">
+          <div className="shrink-0">
+            {avatarUrl ? (
+              <Image
+                src={avatarUrl}
+                alt="avatar"
+                width={64}
+                height={64}
+                className="w-16 h-16 rounded-full object-cover border border-[#d0d7de]"
+                unoptimized
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-[#1f2328] flex items-center justify-center text-white text-2xl font-bold select-none">
+                {username[0]?.toUpperCase() ?? '?'}
+              </div>
+            )}
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingAvatar}
+              className="px-3 py-1.5 text-sm border border-[#d0d7de] text-[#1f2328] rounded-md hover:bg-[#f6f8fa] transition-colors disabled:opacity-50"
+            >
+              {uploadingAvatar ? '上传中...' : '更换头像'}
+            </button>
+            <p className="text-xs text-[#57606a] mt-1.5">支持 JPG、PNG、GIF，最大 2MB</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAvatarUpload(f); e.target.value = '' }}
+            />
+          </div>
+        </div>
+      </div>
+
       <form onSubmit={save} className="space-y-5">
         {/* 基本信息卡片 */}
         <div className="bg-white border border-[#d0d7de] rounded-md overflow-hidden">
@@ -116,11 +198,8 @@ export default function SettingsPage() {
             <h2 className="text-sm font-semibold text-[#1f2328]">基本信息</h2>
           </div>
           <div className="p-5 space-y-4">
-            {/* 用户名 */}
             <div>
-              <label className="block text-sm font-medium text-[#1f2328] mb-1">
-                用户名
-              </label>
+              <label className="block text-sm font-medium text-[#1f2328] mb-1">用户名</label>
               <input
                 type="text"
                 value={username}
@@ -132,12 +211,8 @@ export default function SettingsPage() {
                 字母、数字、下划线、连字符，3–32 位。主页链接将随用户名变更。
               </p>
             </div>
-
-            {/* 个人简介 */}
             <div>
-              <label className="block text-sm font-medium text-[#1f2328] mb-1">
-                个人简介
-              </label>
+              <label className="block text-sm font-medium text-[#1f2328] mb-1">个人简介</label>
               <textarea
                 value={bio}
                 onChange={(e) => { if (e.target.value.length <= 200) setBio(e.target.value) }}
@@ -147,13 +222,9 @@ export default function SettingsPage() {
               />
               <p className="mt-1 text-xs text-[#57606a] text-right">{bio.length}/200</p>
             </div>
-
-            {/* 性别 + 年龄 */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-[#1f2328] mb-1">
-                  性别
-                </label>
+                <label className="block text-sm font-medium text-[#1f2328] mb-1">性别</label>
                 <select
                   value={gender}
                   onChange={(e) => setGender(e.target.value as typeof gender)}
@@ -166,9 +237,7 @@ export default function SettingsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1f2328] mb-1">
-                  年龄
-                </label>
+                <label className="block text-sm font-medium text-[#1f2328] mb-1">年龄</label>
                 <input
                   type="number"
                   value={age}
@@ -190,9 +259,7 @@ export default function SettingsPage() {
           </div>
           <div className="p-5 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-[#1f2328] mb-1">
-                邮箱地址
-              </label>
+              <label className="block text-sm font-medium text-[#1f2328] mb-1">邮箱地址</label>
               <input
                 type="email"
                 value={email}
@@ -203,10 +270,8 @@ export default function SettingsPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-[#1f2328] mb-1">密码</p>
-              <a
-                href="/forgot-password"
-                className="inline-flex items-center gap-1.5 text-sm text-[#0969da] hover:underline"
-              >
+              <a href="/forgot-password"
+                className="inline-flex items-center gap-1.5 text-sm text-[#0969da] hover:underline">
                 修改密码（通过邮件重置）
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
                   <path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/>
@@ -216,25 +281,16 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* 反馈 */}
         {error && (
-          <div className="bg-[#fff8c5] border border-[#d4a72c] rounded-md px-4 py-2.5 text-sm text-[#6e4c08]">
-            {error}
-          </div>
+          <div className="bg-[#fff8c5] border border-[#d4a72c] rounded-md px-4 py-2.5 text-sm text-[#6e4c08]">{error}</div>
         )}
         {success && (
-          <div className="bg-[#dafbe1] border border-[#82e19b] rounded-md px-4 py-2.5 text-sm text-[#1a7f37]">
-            {success}
-          </div>
+          <div className="bg-[#dafbe1] border border-[#82e19b] rounded-md px-4 py-2.5 text-sm text-[#1a7f37]">{success}</div>
         )}
 
-        {/* 保存按钮 */}
         <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-[5px] text-sm font-semibold text-white bg-[#1f883d] hover:bg-[#1a7f37] border border-[rgba(31,35,40,0.15)] rounded-md disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          >
+          <button type="submit" disabled={saving}
+            className="px-4 py-[5px] text-sm font-semibold text-white bg-[#1f883d] hover:bg-[#1a7f37] border border-[rgba(31,35,40,0.15)] rounded-md disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
             {saving ? '保存中...' : '保存更改'}
           </button>
         </div>

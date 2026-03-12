@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import Link from 'next/link'
+import Image from 'next/image'
 import LogoutButton from '@/app/dashboard/LogoutButton'
 import Logo from '@/app/components/Logo'
 
@@ -34,7 +35,7 @@ export default async function AppShell({
   // 查当前用户的 username
   const { data: profile } = await supabase
     .from('profiles')
-    .select('username')
+    .select('username, avatar_url')
     .eq('id', user.id)
     .single()
 
@@ -110,17 +111,21 @@ export default async function AppShell({
       <header className="bg-[#1f2328] border-b border-[#30363d] shrink-0">
         <div className="max-w-[1280px] mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="flex items-center gap-3">
-              <Logo size={32} />
-              <span className="text-white font-semibold text-sm">lgo</span>
+            <Link href="/dashboard" className="flex items-center">
+              <Logo size={40} />
             </Link>
           </div>
           <div className="flex items-center gap-3">
             {profile && (
-              <Link
-                href={`/u/${profile.username}`}
-                className="text-sm text-[#8d96a0] hover:text-white transition-colors hidden sm:block"
-              >
+              <Link href={`/u/${profile.username}`} className="flex items-center gap-2 text-sm text-[#8d96a0] hover:text-white transition-colors hidden sm:flex">
+                {profile.avatar_url ? (
+                  <Image src={profile.avatar_url} alt={profile.username} width={24} height={24}
+                    className="w-6 h-6 rounded-full object-cover" unoptimized />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-[#57606a] flex items-center justify-center text-white text-xs font-bold select-none">
+                    {profile.username[0].toUpperCase()}
+                  </div>
+                )}
                 @{profile.username}
               </Link>
             )}

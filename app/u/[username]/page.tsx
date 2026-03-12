@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import Logo from '@/app/components/Logo'
 import ProfileFeed from './ProfileFeed'
 
@@ -18,7 +19,7 @@ export default async function UserProfilePage({
   // 查主页所属用户
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, username, bio, gender, age')
+    .select('id, username, bio, gender, age, avatar_url')
     .eq('username', username)
     .single()
 
@@ -65,6 +66,7 @@ export default async function UserProfilePage({
     + mindmaps.filter(m => m.is_public).length
 
   const bio = (profile as { bio?: string | null }).bio
+  const avatarUrl = (profile as { avatar_url?: string | null }).avatar_url
 
   return (
     <div className="min-h-screen bg-[#f6f8fa]">
@@ -91,9 +93,14 @@ export default async function UserProfilePage({
         <div className="bg-white border border-[#d0d7de] rounded-md px-6 py-5 mb-6 mt-6">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-[#1f2328] flex items-center justify-center text-white text-2xl font-bold select-none">
-                {username[0].toUpperCase()}
-              </div>
+              {avatarUrl ? (
+                <Image src={avatarUrl} alt={username} width={56} height={56}
+                  className="w-14 h-14 rounded-full object-cover border border-[#d0d7de]" unoptimized />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-[#1f2328] flex items-center justify-center text-white text-2xl font-bold select-none">
+                  {username[0].toUpperCase()}
+                </div>
+              )}
               <div>
                 <h1 className="text-lg font-semibold text-[#1f2328]">@{username}</h1>
                 {bio && <p className="text-sm text-[#57606a] mt-0.5">{bio}</p>}
