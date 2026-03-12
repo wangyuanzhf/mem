@@ -7,29 +7,54 @@ import mermaid from 'mermaid'
 mermaid.initialize({ startOnLoad: false, theme: 'default' })
 
 function renderMath(el: HTMLElement) {
-  const text = el.innerHTML
-
-  const result = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
-    try {
-      return katex.renderToString(math, { displayMode: true, throwOnError: false })
-    } catch { return _ }
+  // 收集所有不在 pre/code 内的文本节点
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      let p = node.parentElement
+      while (p && p !== el) {
+        if (p.tagName === 'PRE' || p.tagName === 'CODE') return NodeFilter.FILTER_REJECT
+        p = p.parentElement
+      }
+      return NodeFilter.FILTER_ACCEPT
+    },
   })
-  .replace(/\$([^$\n]+?)\$/g, (_, math) => {
-    try {
-      return katex.renderToString(math, { displayMode: false, throwOnError: false })
-    } catch { return _ }
-  })
 
-  if (result !== text) el.innerHTML = result
+  const nodes: Text[] = []
+  while (walker.nextNode()) nodes.push(walker.currentNode as Text)
+
+  for (const node of nodes) {
+    const text = node.textContent ?? ''
+    if (!text.includes('$')) continue
+
+    const span = document.createElement('span')
+    // 先处理 $$...$$，再处理 $...$
+    span.innerHTML = text
+      .replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
+        try { return katex.renderToString(math, { displayMode: true, throwOnError: false }) }
+        catch { return `$$${math}$$` }
+      })
+      .replace(/\$([^$\n]+?)\$/g, (_, math) => {
+        try { return katex.renderToString(math, { displayMode: false, throwOnError: false }) }
+        catch { return `$${math}$` }
+      })
+
+    if (span.innerHTML !== text) node.replaceWith(span)
+  }
 }
 
 async function renderMermaid(el: HTMLElement) {
-  const blocks = el.querySelectorAll<HTMLElement>('pre code.language-mermaid')
+  const MERMAID_KEYWORDS = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|journey)\b/
+
+  const blocks = el.querySelectorAll<HTMLElement>('pre code')
   for (const block of blocks) {
+    const cls = block.className ?? ''
     const code = block.textContent ?? ''
+    const isMermaid = cls.includes('language-mermaid') || MERMAID_KEYWORDS.test(code)
+    if (!isMermaid) continue
+
     const id = `mermaid-${Math.random().toString(36).slice(2)}`
     try {
-      const { svg } = await mermaid.render(id, code)
+      const { svg } = await mermaid.render(id, code.trim())
       const wrapper = document.createElement('div')
       wrapper.className = 'mermaid-diagram my-4 overflow-x-auto'
       wrapper.innerHTML = svg
