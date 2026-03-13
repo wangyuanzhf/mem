@@ -42,6 +42,12 @@ function renderMath(el: HTMLElement) {
   }
 }
 
+function fixMermaidLabels(code: string): string {
+  // 把含有括号的节点标签加引号，避免 Mermaid 把 ( 解析为形状语法
+  // 例: [O(n²) 注意力] → ["O(n²) 注意力"]
+  return code.replace(/\[([^\]"[\n]*\([^\]"[\n]*)\]/g, '["$1"]')
+}
+
 async function renderMermaid(el: HTMLElement) {
   const MERMAID_KEYWORDS = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|journey)\b/
 
@@ -54,7 +60,7 @@ async function renderMermaid(el: HTMLElement) {
 
     const id = `mermaid-${Math.random().toString(36).slice(2)}`
     try {
-      const { svg } = await mermaid.render(id, code.trim())
+      const { svg } = await mermaid.render(id, fixMermaidLabels(code.trim()))
       const wrapper = document.createElement('div')
       wrapper.className = 'mermaid-diagram my-4 overflow-x-auto'
       wrapper.innerHTML = svg
